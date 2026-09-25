@@ -2,7 +2,7 @@
 
 O **MIDAS** é um plugin WordPress para apresentar acervos de repositórios DSpace em um catálogo de mídias independente do tema. Ele descobre conjuntos por OAI-PMH, importa metadados e permite publicar coleções selecionadas com vídeos, imagens e links para PDFs.
 
-**Versão do código:** `0.1.0`, em desenvolvimento. O nome `midas-dspace` é provisório. O repositório GitHub oficial ainda não foi definido.
+**Versão do código:** `0.1.1`, em desenvolvimento. O nome `midas-dspace` é provisório. O repositório GitHub oficial ainda não foi definido.
 
 ## Recursos
 
@@ -59,7 +59,17 @@ midas-dspace.zip
     └── assets/
 ```
 
-Na raiz deste projeto, é possível gerar o pacote no PowerShell:
+Na raiz deste projeto, gere preferencialmente o pacote validado com PHP e a extensão `zip`:
+
+```bash
+php scripts/build.php
+```
+
+O arquivo para enviar ao WordPress será **`dist/midas-dspace.zip`**. O script confere os arquivos obrigatórios e o cabeçalho do plugin, utiliza caminhos compatíveis com o ZIP e verifica o pacote após gravá-lo. Testes e fixtures ficam fora do pacote de instalação.
+
+A mensagem **“The plugin contains no files”** pode ocorrer ao enviar um ZIP vazio. Gere novamente pelo comando acima e selecione o arquivo de `dist/`; não reutilize um pacote vazio.
+
+Como alternativa, é possível gerar o pacote no PowerShell:
 
 ```powershell
 Compress-Archive -Path .\midas-dspace -DestinationPath .\midas-dspace.zip
@@ -104,7 +114,7 @@ O endpoint OAI de um cadastro existente não pode ser trocado pela interface. Ca
 ### 2. Publicar coleções
 
 1. Acompanhe a descoberta em **MIDAS → Sincronização / Logs**.
-2. Abra **MIDAS → Coleções**.
+2. Abra **MIDAS → Coleções**. A descoberta avança automaticamente enquanto a tela estiver aberta, em lotes de 100 e sem limite total. Aguarde a indicação de conclusão e clique em **Atualizar lista de coleções**. Se houver falha, consulte os logs; **Continuar descoberta** tenta executar a próxima etapa elegível, respeitando o tempo de espera.
 3. Confira o nome, o `setSpec` e o tipo de cada conjunto.
 4. Marque as coleções desejadas.
 5. Clique em **Salvar seleção e sincronizar**.

@@ -6,6 +6,10 @@ defined('ABSPATH') || exit;
 
 final class Queue {
     public function register(): void {
+        add_filter('cron_schedules', static function ($schedules) {
+            $schedules['midas_minute'] = ['interval' => 60, 'display' => 'MIDAS: a cada minuto'];
+            return $schedules;
+        });
         add_action('midas_tick', [$this, 'tick']);
         add_action('init', [$this, 'schedule']);
     }
@@ -13,8 +17,10 @@ final class Queue {
         if (function_exists('as_has_scheduled_action') && function_exists('as_schedule_recurring_action')) {
             wp_clear_scheduled_hook('midas_tick');
             if (!as_has_scheduled_action('midas_tick', [], 'midas')) { as_schedule_recurring_action(time() + 30, 60, 'midas_tick', [], 'midas'); }
-        } elseif (!wp_next_scheduled('midas_tick')) {
-            wp_schedule_single_event(time() + 60, 'midas_tick');
+        } else {
+            $event = wp_get_scheduled_event('midas_tick');
+            if ($event && !$event->schedule) { wp_clear_scheduled_hook('midas_tick'); $event = false; }
+            if (!$event) { wp_schedule_event(time() + 60, 'midas_minute', 'midas_tick'); }
         }
     }
     public static function enqueue(int $repository, int $collection = 0): void {
@@ -23,7 +29,7 @@ final class Queue {
         $job = $collection ? 'records' : 'sets';
         DB::check($wpdb->query($wpdb->prepare("INSERT INTO $t (repository_id,collection_id,job,status,next_run) VALUES (%d,%d,%s,'queued',0) ON DUPLICATE KEY UPDATE status='queued',attempts=0,next_run=0", $repository, $collection, $job)));
     }
-    public function tick(): void {
+    public function tick(bool $discoveryOnly = false): void {
         global $wpdb;
         $this->schedule();
         // MySQL advisory lock is shared by Cron, Action Scheduler and WP-CLI.
@@ -31,7 +37,8 @@ final class Queue {
         if ((int)$wpdb->get_var($wpdb->prepare('SELECT GET_LOCK(%s,0)', $lock)) !== 1) { return; }
         try {
             $t = DB::table('checkpoints');
-            $job = $wpdb->get_row($wpdb->prepare("SELECT j.* FROM $t j LEFT JOIN " . DB::table('collections') . " c ON c.id=j.collection_id WHERE j.status IN ('queued','running','idle') AND j.next_run<=%d AND (j.job='sets' OR c.enabled=1) ORDER BY j.next_run,j.id LIMIT 1", time()));
+            $scope = $discoveryOnly ? " AND j.job='sets'" : "";
+            $job = $wpdb->get_row($wpdb->prepare("SELECT j.* FROM $t j LEFT JOIN " . DB::table('collections') . " c ON c.id=j.collection_id WHERE j.status IN ('queued','running','idle') AND j.next_run<=%d AND (j.job='sets' OR c.enabled=1) $scope ORDER BY j.next_run,j.id LIMIT 1", time()));
             if (!$job) { return; }
             $repository = $wpdb->get_row($wpdb->prepare('SELECT * FROM ' . DB::table('repositories') . ' WHERE id=%d', $job->repository_id));
             if (!$repository) { return; }

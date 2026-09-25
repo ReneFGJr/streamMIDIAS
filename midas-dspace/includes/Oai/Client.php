@@ -21,7 +21,7 @@ final class Client {
         return $xml;
     }
     public function request(string $verb, array $args = []): \SimpleXMLElement {
-        $response = wp_safe_remote_get(add_query_arg(['verb' => $verb] + $args, $this->endpoint), ['timeout' => 30, 'redirection' => 3, 'limit_response_size' => 12 * 1024 * 1024]);
+        $response = wp_safe_remote_get(add_query_arg(array_map('rawurlencode', ['verb' => $verb] + $args), $this->endpoint), ['timeout' => 30, 'redirection' => 3, 'limit_response_size' => 12 * 1024 * 1024]);
         if (is_wp_error($response)) { throw new \RuntimeException($response->get_error_message()); }
         if (wp_remote_retrieve_response_code($response) !== 200) { throw new \RuntimeException('HTTP ' . wp_remote_retrieve_response_code($response)); }
         $xml = self::xml(wp_remote_retrieve_body($response));

@@ -56,6 +56,7 @@ final class Pages {
     public function collections(): void {
         global $wpdb;
         $this->start('Coleções');
+        Discovery::panel();
         echo '<p>Somente conjuntos selecionados serão publicados. Tipos desconhecidos exigem avaliação do administrador.</p>';
         $this->form('collections');
         $rows = $wpdb->get_results('SELECT c.*,r.name repository_name FROM ' . DB::table('collections') . ' c JOIN ' . DB::table('repositories') . ' r ON r.id=c.repository_id ORDER BY r.id,c.id');
