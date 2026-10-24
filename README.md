@@ -152,6 +152,18 @@ Para restringir diretamente o catálogo:
 [streamVideo collection="1,2,3"]
 ```
 
+### Documentos
+
+```text
+[streamDocumento]
+```
+
+Exibe os arquivos PDF, JPG/JPEG, GIF, PNG e WebP verificados, com pré-visualização e paginação. Para restringir às coleções informadas:
+
+```text
+[streamDocumento collection="1,2,3"]
+```
+
 ### Navegação entre coleções
 
 As duas formas são aceitas no conteúdo de páginas e posts:

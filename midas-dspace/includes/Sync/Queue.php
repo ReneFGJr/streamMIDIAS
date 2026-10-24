@@ -28,8 +28,9 @@ final class Queue {
         $t = DB::table('checkpoints');
         $job = $collection ? 'records' : 'sets';
         DB::check($wpdb->query($wpdb->prepare("INSERT INTO $t (repository_id,collection_id,job,status,next_run) VALUES (%d,%d,%s,'queued',0) ON DUPLICATE KEY UPDATE status='queued',attempts=0,next_run=0", $repository, $collection, $job)));
+        DB::log($repository, 'info', $collection ? 'Coleta de itens adicionada à fila.' : 'Descoberta de coleções adicionada à fila.', $collection, $job);
     }
-    public function tick(bool $discoveryOnly = false): void {
+    public function tick(bool $discoveryOnly = false, int $collectionId = 0): void {
         global $wpdb;
         $this->schedule();
         // MySQL advisory lock is shared by Cron, Action Scheduler and WP-CLI.
@@ -38,6 +39,7 @@ final class Queue {
         try {
             $t = DB::table('checkpoints');
             $scope = $discoveryOnly ? " AND j.job='sets'" : "";
+            if ($collectionId > 0) { $scope .= $wpdb->prepare(' AND j.collection_id=%d', $collectionId); }
             $job = $wpdb->get_row($wpdb->prepare("SELECT j.* FROM $t j LEFT JOIN " . DB::table('collections') . " c ON c.id=j.collection_id WHERE j.status IN ('queued','running','idle') AND j.next_run<=%d AND (j.job='sets' OR c.enabled=1) $scope ORDER BY j.next_run,j.id LIMIT 1", time()));
             if (!$job) { return; }
             $repository = $wpdb->get_row($wpdb->prepare('SELECT * FROM ' . DB::table('repositories') . ' WHERE id=%d', $job->repository_id));
@@ -48,7 +50,7 @@ final class Queue {
                 $changes = ['attempts' => $attempts, 'status' => $attempts >= 8 ? 'failed' : 'queued', 'next_run' => time() + min(3600, 30 * (2 ** min($attempts, 7)))];
                 if ($e->getMessage() === 'badResumptionToken') { $changes += ['token' => '', 'payload' => '', 'record_offset' => 0]; }
                 DB::check($wpdb->update($t, $changes, ['id' => $job->id]));
-                DB::log((int)$repository->id, 'error', $e->getMessage());
+                DB::log((int)$repository->id, 'error', 'Falha durante o processo: ' . $e->getMessage(), (int)$job->collection_id, (string)$job->job);
             }
         } finally { $wpdb->get_var($wpdb->prepare('SELECT RELEASE_LOCK(%s)', $lock)); }
     }
@@ -65,7 +67,9 @@ final class Queue {
             $fullDue = !$job->last_full_success || strtotime($job->last_full_success) < time() - 30 * DAY_IN_SECONDS;
             $job->window_from = $fullDue ? '' : ($job->last_success ?: '');
             $job->run_id = bin2hex(random_bytes(16));
-            DB::check($wpdb->update($t, ['window_until' => $job->window_until, 'window_from' => $job->window_from, 'run_id' => $job->run_id, 'status' => 'running'], ['id' => $job->id]));
+            $job->processed_count = 0;
+            DB::check($wpdb->update($t, ['window_until' => $job->window_until, 'window_from' => $job->window_from, 'run_id' => $job->run_id, 'processed_count' => 0, 'status' => 'running'], ['id' => $job->id]));
+            DB::log((int)$repository->id, 'info', $job->job === 'records' ? 'Iniciando a coleta dos itens da coleção.' : 'Iniciando a descoberta das coleções.', (int)$job->collection_id, (string)$job->job);
         }
         $verb = $job->job === 'sets' ? 'ListSets' : 'ListRecords';
         if ($job->payload) { $xml = Client::xml($job->payload); }
@@ -85,6 +89,7 @@ final class Queue {
         $nodes = $xml->xpath('/*/*[local-name()="' . $verb . '"]/*[local-name()="' . ($job->job === 'sets' ? 'set' : 'record') . '"]');
         $offset = (int)$job->record_offset;
         $end = min(count($nodes), $offset + ($job->job === 'sets' ? 100 : 3));
+        $processedCount = (int)($job->processed_count ?? 0);
         for ($i = $offset; $i < $end; $i++) {
             if ($job->job === 'sets') { $this->collection($nodes[$i], (int)$repository->id); }
             else {
@@ -106,8 +111,10 @@ final class Queue {
                 }
                 \Midas\Storage\Items::save($record, $repository, (int)$job->collection_id, $job->run_id);
             }
-            DB::check($wpdb->update($t, ['record_offset' => $i + 1], ['id' => $job->id]));
+            $processedCount++;
+            DB::check($wpdb->update($t, ['record_offset' => $i + 1, 'processed_count' => $processedCount], ['id' => $job->id]));
         }
+        if ($job->job === 'records' && $end > $offset) { DB::log((int)$repository->id, 'info', 'Lote concluído: ' . ($end - $offset) . ' item(ns). Total processado nesta execução: ' . $processedCount . '.', (int)$job->collection_id, 'records'); }
         if ($end < count($nodes)) {
             DB::check($wpdb->update($t, ['status' => 'running', 'attempts' => 0, 'next_run' => time() + 1], ['id' => $job->id]));
             return;
@@ -122,7 +129,8 @@ final class Queue {
                 $changes['last_full_success'] = $job->window_until;
             }
             $changes += ['last_success' => $job->window_until, 'window_from' => '', 'window_until' => ''];
-            DB::log((int)$repository->id, 'info', $verb . ' concluído para coleção ' . $job->collection_id);
+            $message = $job->job === 'records' ? 'Coleta concluída com sucesso. Total de itens processados: ' . $processedCount . '.' : 'Descoberta de coleções concluída com sucesso.';
+            DB::log((int)$repository->id, 'info', $message, (int)$job->collection_id, (string)$job->job);
         }
         DB::check($wpdb->update($t, $changes, ['id' => $job->id]));
     }

@@ -3,6 +3,9 @@ name: criar-plugin-stream-dspace
 description: Criar e manter plugin WordPress que descobre coleções DSpace por OAI-PMH, importa metadados e mídias, apresenta vídeos e coleções via shortcodes e recebe atualizações pelo GitHub. Usar ao implementar, testar ou distribuir esse projeto.
 ---
 
+# Atualizações
+Sempre que atualizar os dados aumente a versão do sistemas, exemplo v0.0.5 para v0.0.6.
+
 # Projeto sugerido: MIDAS
 
 **MIDAS — Mídias Digitais de Acervos e Sistemas**. Nome provisório do plugin: `midas-dspace`; confirmar disponibilidade de nome antes de publicar. Repositório oficial do código: GitHub, em `OWNER/REPO` até o usuário informar a URL.

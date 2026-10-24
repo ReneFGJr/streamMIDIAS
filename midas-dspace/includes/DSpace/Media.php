@@ -16,7 +16,7 @@ final class Media {
             if ($status === 429 || $status >= 500) { throw new \RuntimeException('Falha temporária de mídia: HTTP ' . $status); }
             if ($status !== 200) { continue; }
             $mime = strtolower(trim(explode(';', wp_remote_retrieve_header($response, 'content-type'))[0]));
-            if (!preg_match('~^(video/[a-z0-9.+-]+|image/(jpeg|png|gif|webp|avif)|application/pdf)$~', $mime)) { continue; }
+            if (!preg_match('~^(video/[a-z0-9.+-]+|image/(jpeg|jpg|png|gif|webp|avif)|application/pdf)$~', $mime)) { continue; }
             $files[] = ['url' => $url, 'mime' => $mime, 'bundle' => $bundle];
         }
         return $files;
@@ -76,7 +76,7 @@ final class Media {
         if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200 || filesize($temp) > $limit) { wp_delete_file($temp); return 0; }
         $name = sanitize_file_name(basename(wp_parse_url($url, PHP_URL_PATH) ?: ''));
         if (!pathinfo($name, PATHINFO_EXTENSION)) {
-            $ext = ['video/mp4' => 'mp4', 'video/webm' => 'webm', 'video/ogg' => 'ogv', 'image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif', 'image/avif' => 'avif', 'application/pdf' => 'pdf'][$mime] ?? '';
+            $ext = ['video/mp4' => 'mp4', 'video/webm' => 'webm', 'video/ogg' => 'ogv', 'image/jpeg' => 'jpg', 'image/jpg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif', 'image/avif' => 'avif', 'application/pdf' => 'pdf'][$mime] ?? '';
             if (!$ext) { wp_delete_file($temp); return 0; }
             $name = 'midas-' . substr(hash('sha256', $url), 0, 20) . '.' . $ext;
         }

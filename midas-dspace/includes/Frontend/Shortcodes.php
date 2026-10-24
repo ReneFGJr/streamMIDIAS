@@ -9,6 +9,7 @@ final class Shortcodes {
             add_filter($hook, [self::class, 'normalize'], 8);
         }
         add_shortcode('streamVideo', [$this, 'catalog']);
+        add_shortcode('streamDocumento', [$this, 'documents']);
         add_shortcode('streamController', [$this, 'controller']);
         add_action('wp_enqueue_scripts', static function () {
             wp_enqueue_style('midas', plugins_url('assets/css/catalog.css', MIDAS_FILE), [], MIDAS_VERSION);
@@ -16,7 +17,7 @@ final class Shortcodes {
     }
     public static function normalize(string $content): string {
         // Core shortcode regex terminates at a ] even inside a quoted attribute.
-        return preg_replace_callback('/(?<!\[)\[(streamController|streamVideo)\b((?:[^\]"\x27]|"[^"]*"|\x27[^\x27]*\x27)*)\]/', static function ($match) {
+        return preg_replace_callback('/(?<!\[)\[(streamController|streamVideo|streamDocumento)\b((?:[^\]"\x27]|"[^"]*"|\x27[^\x27]*\x27)*)\]/', static function ($match) {
             $attributes = preg_replace_callback('/\bcollection\s*=\s*(["\x27])\[([^\]]*)\]\1/', static function ($value) {
                 $ids = self::ids('[' . $value[2] . ']');
                 return 'collection=' . $value[1] . implode(',', $ids ?: [0]) . $value[1];
@@ -59,11 +60,70 @@ final class Shortcodes {
         if (!$ids) { return '<p class="midas-empty">Nenhuma coleção disponível.</p>'; }
         $rows = $wpdb->get_results('SELECT id,name FROM ' . DB::table('collections') . ' WHERE enabled=1 AND id IN (' . implode(',', $ids) . ') ORDER BY name');
         $selected = absint($this->query('midas_collection'));
-        $html = '<nav class="midas-controller" aria-label="Coleções"><a href="' . esc_url(remove_query_arg(['midas_collection', 'midas_page'])) . '">Todas as coleções</a>';
+        $html = '<nav class="midas-controller" aria-label="Coleções"><a href="' . esc_url(remove_query_arg(['midas_collection', 'midas_page', 'midas_document_page'])) . '">Todas as coleções</a>';
         foreach ($rows as $row) {
-            $html .= '<a ' . ($selected === (int)$row->id ? 'aria-current="page" ' : '') . 'href="' . esc_url(add_query_arg('midas_collection', $row->id, remove_query_arg('midas_page'))) . '">' . esc_html($row->name) . '</a>';
+            $html .= '<a ' . ($selected === (int)$row->id ? 'aria-current="page" ' : '') . 'href="' . esc_url(add_query_arg('midas_collection', $row->id, remove_query_arg(['midas_page', 'midas_document_page']))) . '">' . esc_html($row->name) . '</a>';
         }
-        return $html . '</nav>';
+        $html .= '</nav>';
+
+        $selectedValue = $this->query('midas_collection');
+        $pdfIds = $ids;
+        if ($selectedValue !== '') { $pdfIds = ctype_digit($selectedValue) ? array_values(array_intersect($ids, [(int)$selectedValue])) : []; }
+        if ($pdfIds) {
+            $items = DB::table('items');
+            $files = DB::table('files');
+            $relations = DB::table('item_collections');
+            $pdfs = $wpdb->get_results("SELECT i.id,i.title,f.url,f.attachment_id FROM $items i JOIN $files f ON f.item_id=i.id AND f.mime='application/pdf' AND f.verified=1 WHERE i.deleted=0 AND EXISTS (SELECT 1 FROM $relations ic WHERE ic.item_id=i.id AND ic.collection_id IN (" . implode(',', $pdfIds) . ')) ORDER BY i.title,f.id');
+            $seen = [];
+            $list = '';
+            foreach ($pdfs as $pdf) {
+                if (isset($seen[$pdf->id])) { continue; }
+                $seen[$pdf->id] = true;
+                $url = $pdf->attachment_id ? wp_get_attachment_url((int)$pdf->attachment_id) : '';
+                $url = $url ?: $pdf->url;
+                $list .= '<li><a href="' . esc_url($url) . '" target="_blank" rel="noopener noreferrer"><span class="midas-pdf-icon" aria-hidden="true">PDF</span><span>' . esc_html($pdf->title) . '</span></a></li>';
+            }
+            if ($list !== '') { $html .= '<section class="midas-pdf-documents" aria-label="Documentos PDF"><h2>Documentos PDF</h2><ul class="midas-pdf-list">' . $list . '</ul></section>'; }
+        }
+        return $html;
+    }
+    public function documents($atts = []): string {
+        global $wpdb;
+        $ids = $this->allowed(is_array($atts) ? $atts : []);
+        $selected = $this->query('midas_collection');
+        if ($selected !== '') { $ids = ctype_digit($selected) ? array_values(array_intersect($ids, [(int)$selected])) : []; }
+        if (!$ids) { return '<p class="midas-empty">Nenhuma coleção disponível para este filtro.</p>'; }
+
+        $page = min(100000, max(1, absint($this->query('midas_document_page'))));
+        $items = DB::table('items');
+        $files = DB::table('files');
+        $relations = DB::table('item_collections');
+        $supported = "('application/pdf','image/jpeg','image/jpg','image/gif','image/png','image/webp')";
+        $where = "i.deleted=0 AND EXISTS (SELECT 1 FROM $relations ic WHERE ic.item_id=i.id AND ic.collection_id IN (" . implode(',', $ids) . ")) AND EXISTS (SELECT 1 FROM $files mf WHERE mf.item_id=i.id AND mf.verified=1 AND mf.mime IN $supported)";
+        $total = (int)$wpdb->get_var("SELECT COUNT(*) FROM $items i WHERE $where");
+        $rows = $wpdb->get_results($wpdb->prepare("SELECT i.* FROM $items i WHERE $where ORDER BY i.id DESC LIMIT %d OFFSET %d", 12, ($page - 1) * 12));
+        $html = '<section class="midas-catalog midas-documents" aria-label="Documentos"><p>' . esc_html(number_format_i18n($total)) . ' documento(s)</p><div class="midas-grid midas-document-grid">';
+        foreach ($rows as $item) {
+            $html .= '<article class="midas-card midas-document-card"><h2>' . esc_html($item->title) . '</h2>';
+            $media = $wpdb->get_results($wpdb->prepare("SELECT * FROM $files WHERE item_id=%d AND verified=1 AND mime IN $supported ORDER BY id", $item->id));
+            foreach ($media as $file) {
+                $url = $file->attachment_id ? wp_get_attachment_url((int)$file->attachment_id) : '';
+                $url = $url ?: $file->url;
+                if ($file->mime === 'application/pdf') {
+                    $html .= '<iframe class="midas-document-pdf" loading="lazy" src="' . esc_url($url) . '" title="PDF: ' . esc_attr($item->title) . '" style="display:block;width:100%;height:32rem;max-height:70vh;border:1px solid #d4dce0;border-radius:.3rem"></iframe><p><a href="' . esc_url($url) . '" target="_blank" rel="noopener noreferrer"><span class="midas-pdf-icon" aria-hidden="true">PDF</span> Abrir PDF</a></p>';
+                } else {
+                    $html .= '<a href="' . esc_url($url) . '" target="_blank" rel="noopener noreferrer"><img loading="lazy" src="' . esc_url($url) . '" alt="' . esc_attr($item->title) . '"></a>';
+                }
+            }
+            if ($item->author) { $html .= '<p><strong>Autor:</strong> ' . esc_html($item->author) . '</p>'; }
+            if ($item->source_url) { $html .= '<p><a href="' . esc_url($item->source_url) . '" target="_blank" rel="noopener noreferrer">Ver registro no repositório</a></p>'; }
+            $html .= '</article>';
+        }
+        $html .= '</div><nav class="midas-pagination" aria-label="Paginação dos documentos">';
+        if ($page > 1) { $html .= '<a href="' . esc_url(add_query_arg('midas_document_page', $page - 1)) . '">Anterior</a>'; }
+        $html .= '<span>Página ' . $page . ' de ' . max(1, (int)ceil($total / 12)) . '</span>';
+        if ($page * 12 < $total) { $html .= '<a href="' . esc_url(add_query_arg('midas_document_page', $page + 1)) . '">Próxima</a>'; }
+        return $html . '</nav></section>';
     }
     public function catalog($atts = []): string {
         global $wpdb;
