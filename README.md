@@ -2,7 +2,7 @@
 
 O **MIDAS** é um plugin WordPress para apresentar acervos de repositórios DSpace em um catálogo de mídias independente do tema. Ele descobre conjuntos por OAI-PMH, importa metadados e permite publicar coleções selecionadas com vídeos, imagens e links para PDFs.
 
-**Versão do código:** `0.1.1`, em desenvolvimento. O nome `midas-dspace` é provisório. O repositório GitHub oficial ainda não foi definido.
+**Versão do código:** `0.1.2`, em desenvolvimento. O nome `midas-dspace` é provisório. O repositório GitHub oficial ainda não foi definido.
 
 ## Recursos
 
@@ -253,7 +253,7 @@ Em **MIDAS → Configurações**, informe o repositório público no formato `OW
 Para que o código reconheça uma atualização, a release precisa:
 
 - Estar publicada e não ser uma prerelease.
-- Ter uma tag como `v0.1.1` ou `0.1.1`, superior à versão instalada.
+- Ter uma tag como `v0.1.2` ou `0.1.2`, superior à versão instalada.
 - Incluir um asset chamado exatamente **`midas-dspace.zip`**, com a estrutura de instalação descrita acima.
 
 O campo pode permanecer vazio durante a instalação inicial. A consulta de releases fica em cache por até uma hora após uma resposta bem-sucedida. O mecanismo disponibiliza a atualização no fluxo do WordPress; não publica releases no GitHub.

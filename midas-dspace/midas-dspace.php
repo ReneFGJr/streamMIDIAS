@@ -3,14 +3,14 @@
  * Plugin Name: MIDAS — Mídias Digitais de Acervos e Sistemas
  * Description: Catálogo de acervos DSpace por OAI-PMH.
  * Update URI: midas-dspace
- * Version: 0.1.1
+ * Version: 0.1.2
  * Requires at least: 6.4
  * Requires PHP: 8.1
  * License: GPL-2.0-or-later
  * Text Domain: midas-dspace
  */
 defined('ABSPATH') || exit;
-define('MIDAS_VERSION', '0.1.1');
+define('MIDAS_VERSION', '0.1.2');
 define('MIDAS_FILE', __FILE__);
 spl_autoload_register(static function ($class) {
     if (str_starts_with($class, 'Midas\\')) {
